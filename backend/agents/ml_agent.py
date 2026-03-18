@@ -31,7 +31,17 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 def _df_from_state(state: AgentState) -> pd.DataFrame:
     data = json.loads(state.cleaned_df_json)
-    return pd.DataFrame(data["data"], columns=data["columns"])
+    df = pd.DataFrame(data["data"], columns=data["columns"])
+    for col in df.columns:
+        if df[col].dtype == object:
+            sample = df[col].dropna().head(5)
+            try:
+                parsed = pd.to_datetime(sample)
+                if parsed.notna().all():
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+            except Exception:
+                pass
+    return df
 
 
 def _select_target_with_llm(df: pd.DataFrame) -> tuple[str, str]:

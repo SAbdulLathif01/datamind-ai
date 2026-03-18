@@ -71,11 +71,14 @@ def _clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     # Auto-parse datetime columns
     for col in df.columns:
         if df[col].dtype == object:
-            sample = df[col].dropna().head(10)
+            sample = df[col].dropna().head(5)
             try:
-                parsed = pd.to_datetime(sample, infer_datetime_format=True)
-                df[col] = pd.to_datetime(df[col], infer_datetime_format=True, errors="coerce")
-                steps.append(f"Parsed '{col}' as datetime")
+                pd.to_datetime(sample)
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+                if df[col].notna().sum() > len(df) * 0.5:
+                    steps.append(f"Parsed '{col}' as datetime")
+                else:
+                    df[col] = df[col].astype(str)
             except Exception:
                 pass
 

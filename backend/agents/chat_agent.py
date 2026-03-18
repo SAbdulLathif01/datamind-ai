@@ -30,7 +30,17 @@ def _get_or_create_db(session_id: str, df: pd.DataFrame) -> sqlite3.Connection:
 
 def _df_from_state(state: AgentState) -> pd.DataFrame:
     data = json.loads(state.cleaned_df_json)
-    return pd.DataFrame(data["data"], columns=data["columns"])
+    df = pd.DataFrame(data["data"], columns=data["columns"])
+    for col in df.columns:
+        if df[col].dtype == object:
+            sample = df[col].dropna().head(5)
+            try:
+                parsed = pd.to_datetime(sample)
+                if parsed.notna().all():
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+            except Exception:
+                pass
+    return df
 
 
 def _nl_to_sql(question: str, schema: dict, chat_history: list[dict]) -> str:

@@ -14,11 +14,12 @@ from agents.chat_agent import run_chat_agent
 
 
 def _should_run_ml(state: AgentState) -> str:
-    if state.error:
+    # Only skip on fatal ingest errors, not ML/downstream errors
+    if state.error and not state.cleaned_df_json:
         return "end"
     if state.cleaned_df_json and state.row_count and state.row_count >= 20:
         return "ml"
-    return "end"
+    return "anomaly"  # Too few rows — skip ML but still run anomaly
 
 
 def _after_ml(state: AgentState) -> str:

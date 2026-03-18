@@ -46,11 +46,31 @@ def _df_from_state(state: AgentState) -> pd.DataFrame:
 
 def _select_target_with_llm(df: pd.DataFrame) -> tuple[str, str]:
     """Ask GPT-4o which column is the best target and what task type."""
-    cols_info = {col: str(df[col].dtype) + f", {df[col].nunique()} unique" for col in df.columns}
-    prompt = f"""Given these dataset columns, identify the best target variable for ML and the task type.
+    n = len(df)
+    cols_info = {
+        col: {
+            "dtype": str(df[col].dtype),
+            "nunique": int(df[col].nunique()),
+            "sample": df[col].dropna().head(3).tolist(),
+            "is_id_like": df[col].nunique() >= n * 0.95
+        }
+        for col in df.columns
+    }
+    available_cols = list(df.columns)
+    prompt = f"""Given these dataset columns, identify the best target variable for ML prediction and the task type.
 
-Columns: {json.dumps(cols_info)}
-Shape: {df.shape}
+Available columns (you MUST pick EXACTLY one of these): {available_cols}
+
+Column details: {json.dumps(cols_info, default=str)}
+Dataset shape: {df.shape}
+
+Rules:
+- You MUST return a column name that is in the Available columns list above — no exceptions
+- NEVER pick ID columns (is_id_like=true) or columns with all unique values
+- NEVER pick columns that look like identifiers (e.g. passengerid, id, index, name, ticket)
+- For classification: pick binary or low-cardinality columns (nunique <= 20)
+- For regression: pick continuous numeric columns
+- Prefer columns that are clearly outcome/target variables (e.g. survived, price, sales, churn)
 
 Return JSON only:
 {{"target_column": "column_name", "task_type": "classification|regression", "reasoning": "brief reason"}}"""
@@ -61,29 +81,64 @@ Return JSON only:
         messages=[{"role": "user", "content": prompt}]
     )
     result = json.loads(response.choices[0].message.content)
-    return result["target_column"], result["task_type"]
+    target = result["target_column"]
+    task_type = result["task_type"]
+
+    # Validate the LLM picked an actual column (case-insensitive match)
+    col_lower = {c.lower(): c for c in df.columns}
+    if target not in df.columns:
+        if target.lower() in col_lower:
+            target = col_lower[target.lower()]  # fix case mismatch
+        else:
+            # Fallback: heuristic — best non-ID numeric column
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            candidates = [c for c in numeric_cols if df[c].nunique() < len(df) * 0.95]
+            if not candidates:
+                candidates = numeric_cols
+            if not candidates:
+                raise ValueError(f"LLM chose non-existent target '{target}' and no numeric fallback found")
+            target = candidates[-1]
+            task_type = "classification" if df[target].nunique() <= 20 else "regression"
+
+    return target, task_type
 
 
-def _prepare_features(df: pd.DataFrame, target: str) -> tuple:
+def _prepare_features(df: pd.DataFrame, target: str, task_type: str) -> tuple:
     X = df.drop(columns=[target])
     y = df[target]
 
     # Drop datetime columns from features
     X = X.select_dtypes(exclude=["datetime64"])
 
-    # Encode categoricals
+    # Drop ID-like columns (all unique or nearly all unique, non-target)
+    n = len(X)
+    id_cols = [c for c in X.columns if X[c].nunique() >= n * 0.95]
+    if id_cols:
+        X = X.drop(columns=id_cols)
+
+    # Drop high-cardinality text columns (e.g. name, ticket, cabin)
+    high_card = [c for c in X.select_dtypes(include=["object"]).columns
+                 if X[c].nunique() > 50]
+    if high_card:
+        X = X.drop(columns=high_card)
+
+    # Encode remaining categoricals
     le_map = {}
     for col in X.select_dtypes(include=["object", "category"]).columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
         le_map[col] = le
 
-    # Encode target if classification
-    if y.dtype == object or str(y.dtype) == "category":
+    # Always LabelEncode target for classification (fixes XGBoost [1,2,3] vs [0,1,2])
+    if task_type == "classification":
         le_y = LabelEncoder()
         y = le_y.fit_transform(y.astype(str))
     else:
         y = y.values
+
+    # Fill any remaining NaNs in X
+    X = X.fillna(X.median(numeric_only=True))
+    X = X.fillna(0)
 
     return X, y, le_map
 
@@ -129,20 +184,28 @@ def _train_models(X_train, X_test, y_train, y_test, task_type: str) -> dict:
 
 def _compute_shap(model, X_test: pd.DataFrame, task_type: str) -> dict:
     try:
+        sample = X_test.head(100)
         if hasattr(model, "feature_importances_"):
             explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(sample)
         else:
-            explainer = shap.LinearExplainer(model, X_test)
-        shap_values = explainer.shap_values(X_test[:100])
+            explainer = shap.LinearExplainer(model, sample)
+            shap_values = explainer.shap_values(sample)
+
+        # Handle multi-class (list of arrays) or 3D arrays
         if isinstance(shap_values, list):
-            shap_values = shap_values[0]
+            # Multi-class: average absolute SHAP across all classes
+            shap_values = np.mean([np.abs(sv) for sv in shap_values], axis=0)
+        elif shap_values.ndim == 3:
+            shap_values = np.abs(shap_values).mean(axis=2)
+
         mean_shap = np.abs(shap_values).mean(axis=0)
-        feature_importance = dict(zip(X_test.columns, [round(float(v), 4) for v in mean_shap]))
+        feature_importance = dict(zip(sample.columns, [round(float(v), 4) for v in mean_shap]))
         return dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
     except Exception:
         # Fallback to built-in feature importance
         if hasattr(model, "feature_importances_"):
-            imp = dict(zip(X_test.columns, model.feature_importances_))
+            imp = dict(zip(X_test.columns, [round(float(v), 4) for v in model.feature_importances_]))
             return dict(sorted(imp.items(), key=lambda x: x[1], reverse=True))
         return {}
 
@@ -181,8 +244,8 @@ def run_ml_agent(state: AgentState) -> AgentState:
                      "timestamp": datetime.now().isoformat(), "status": "running"})
 
         # Prepare
-        X, y, _ = _prepare_features(df, target)
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        X, y, _ = _prepare_features(df, target, task_type)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y if task_type == "classification" else None)
 
         # Train all models
         log.append({"agent": "MLAgent", "message": "Training 4 models in parallel...",
@@ -228,7 +291,8 @@ def run_ml_agent(state: AgentState) -> AgentState:
                      "timestamp": datetime.now().isoformat(), "status": "done"})
 
     except Exception as e:
-        state.error = f"MLAgent error: {str(e)}"
+        # Don't set state.error — let downstream agents (anomaly) still run
+        state.ml_results = {"error": str(e)}
         log.append({"agent": "MLAgent", "message": f"❌ Error: {e}",
                      "timestamp": datetime.now().isoformat(), "status": "error"})
 

@@ -125,71 +125,93 @@ export default function ResultsDashboard() {
       )}
 
       {/* ML */}
-      {activeTab === "ml" && ml_results && (
+      {activeTab === "ml" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          {/* Best model banner */}
-          <div className="gradient-border p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <Award className="w-6 h-6 text-yellow-400" />
-              <div>
-                <p className="text-xs text-gray-400">Best Model</p>
-                <p className="text-xl font-bold text-white">{ml_results.best_model}</p>
-              </div>
-              <div className="ml-auto text-right">
-                <p className="text-xs text-gray-400">Task Type</p>
-                <span className={`text-sm font-semibold px-3 py-1 rounded-full
-                  ${ml_results.task_type === "classification" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"}`}>
-                  {ml_results.task_type}
-                </span>
-              </div>
+          {!ml_results ? (
+            <div className="glass p-8 text-center text-gray-400">
+              <Brain className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>ML results not available</p>
             </div>
-            <p className="text-sm text-gray-400">Target: <span className="text-white font-medium">{ml_results.target_column}</span></p>
-          </div>
-
-          {/* All models comparison */}
-          <div className="glass p-5">
-            <h3 className="text-sm font-semibold text-brand-500 mb-4">Model Comparison</h3>
-            <div className="space-y-3">
-              {Object.entries(ml_results.all_models || {}).map(([name, metrics]: [string, any]) => (
-                <div key={name} className={`p-3 rounded-lg border ${name === ml_results.best_model ? "border-brand-500/50 bg-brand-500/5" : "border-gray-700 bg-gray-800/50"}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-200">{name}</span>
-                    {name === ml_results.best_model && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Best</span>}
+          ) : ml_results.error ? (
+            <div className="glass p-6">
+              <div className="flex items-start gap-3 text-yellow-400 mb-2">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-semibold">ML Pipeline could not complete</p>
+              </div>
+              <p className="text-sm text-gray-400 ml-8">{ml_results.error}</p>
+              <p className="text-xs text-gray-500 ml-8 mt-2">This dataset may lack a suitable prediction target, or have too few rows. EDA and Anomaly Detection results are still available.</p>
+            </div>
+          ) : (
+            <>
+              {/* Best model banner */}
+              <div className="gradient-border p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <Award className="w-6 h-6 text-yellow-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">Best Model</p>
+                    <p className="text-xl font-bold text-white">{ml_results.best_model}</p>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.entries(metrics).map(([k, v]: [string, any]) => (
-                      <div key={k} className="text-center">
-                        <p className="text-xs text-gray-500 uppercase">{k.replace("_", " ")}</p>
-                        <p className="text-sm font-bold text-white">{typeof v === "number" ? v.toFixed(4) : v}</p>
-                      </div>
-                    ))}
+                  <div className="ml-auto text-right">
+                    <p className="text-xs text-gray-400">Task Type</p>
+                    <span className={`text-sm font-semibold px-3 py-1 rounded-full
+                      ${ml_results.task_type === "classification" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"}`}>
+                      {ml_results.task_type}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Feature importance */}
-          {ml_results.feature_importance_shap && Object.keys(ml_results.feature_importance_shap).length > 0 && (
-            <div className="glass p-5">
-              <h3 className="text-sm font-semibold text-brand-500 mb-4">🎯 SHAP Feature Importance</h3>
-              <div className="space-y-2">
-                {Object.entries(ml_results.feature_importance_shap).slice(0, 12).map(([feat, val]: [string, any]) => {
-                  const max = Object.values(ml_results.feature_importance_shap)[0] as number;
-                  const pct = max > 0 ? (val / max) * 100 : 0;
-                  return (
-                    <div key={feat} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-32 truncate flex-shrink-0">{feat}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-2">
-                        <div className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-purple-500"
-                          style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="text-xs text-gray-400 w-12 text-right">{val.toFixed(3)}</span>
-                    </div>
-                  );
-                })}
+                <p className="text-sm text-gray-400">Target: <span className="text-white font-medium">{ml_results.target_column}</span></p>
+                <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                  <span>Train: {ml_results.train_size} rows</span>
+                  <span>Test: {ml_results.test_size} rows</span>
+                </div>
               </div>
-            </div>
+
+              {/* All models comparison */}
+              <div className="glass p-5">
+                <h3 className="text-sm font-semibold text-brand-500 mb-4">Model Comparison</h3>
+                <div className="space-y-3">
+                  {Object.entries(ml_results.all_models || {}).map(([name, metrics]: [string, any]) => (
+                    <div key={name} className={`p-3 rounded-lg border ${name === ml_results.best_model ? "border-brand-500/50 bg-brand-500/5" : "border-gray-700 bg-gray-800/50"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-200">{name}</span>
+                        {name === ml_results.best_model && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Best</span>}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Object.entries(metrics).map(([k, v]: [string, any]) => (
+                          <div key={k} className="text-center">
+                            <p className="text-xs text-gray-500 uppercase">{k.replace("_", " ")}</p>
+                            <p className="text-sm font-bold text-white">{typeof v === "number" ? v.toFixed(4) : v}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Feature importance */}
+              {ml_results.feature_importance_shap && Object.keys(ml_results.feature_importance_shap).length > 0 && (
+                <div className="glass p-5">
+                  <h3 className="text-sm font-semibold text-brand-500 mb-4">🎯 SHAP Feature Importance</h3>
+                  <div className="space-y-2">
+                    {Object.entries(ml_results.feature_importance_shap).slice(0, 12).map(([feat, val]: [string, any]) => {
+                      const max = Object.values(ml_results.feature_importance_shap)[0] as number;
+                      const pct = max > 0 ? (val / max) * 100 : 0;
+                      return (
+                        <div key={feat} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-400 w-32 truncate flex-shrink-0">{feat}</span>
+                          <div className="flex-1 bg-gray-800 rounded-full h-2">
+                            <div className="h-2 rounded-full bg-gradient-to-r from-brand-500 to-purple-500"
+                              style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-xs text-gray-400 w-12 text-right">{val.toFixed(3)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </motion.div>
       )}
@@ -204,7 +226,7 @@ export default function ResultsDashboard() {
             </div>
           ) : forecast_results?.error ? (
             <div className="glass p-5 text-red-400 text-sm">Error: {forecast_results.error}</div>
-          ) : forecast_results ? (
+          ) : forecast_results && !forecast_results.skipped ? (
             <>
               <div className="grid grid-cols-3 gap-3">
                 <StatCard icon={TrendingUp} label="Trend" value={forecast_results.trend_direction || "—"} color="text-green-400" />
@@ -225,7 +247,13 @@ export default function ResultsDashboard() {
                 <InsightCard title="📊 AI Forecast Analysis" content={forecast_results.ai_insights} />
               )}
             </>
-          ) : null}
+          ) : (
+            <div className="glass p-8 text-center text-gray-400">
+              <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>No datetime columns detected — forecasting was skipped</p>
+              <p className="text-xs text-gray-500 mt-1">Upload a dataset with a date/time column to enable forecasting</p>
+            </div>
+          )}
         </motion.div>
       )}
 

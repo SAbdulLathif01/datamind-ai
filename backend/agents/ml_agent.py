@@ -147,6 +147,11 @@ def _train_models(X_train, X_test, y_train, y_test, task_type: str) -> dict:
     results = {}
 
     if task_type == "classification":
+        # Safety: always ensure 0-indexed classes (XGBoost requirement)
+        le_safe = LabelEncoder()
+        y_train = le_safe.fit_transform(np.array(y_train).astype(str))
+        y_test = le_safe.transform(np.array(y_test).astype(str))
+
         models = {
             "RandomForest": RandomForestClassifier(n_estimators=100, random_state=42),
             "XGBoost": xgb.XGBClassifier(n_estimators=100, random_state=42, eval_metric="logloss", verbosity=0),

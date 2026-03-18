@@ -190,9 +190,62 @@ datamind-ai/
 
 ---
 
-## Screenshots
+## Demo
 
-> Drop a CSV → All 7 agents activate → Real-time activity feed → Full analytics dashboard with ML models, forecasts, anomaly detection, and natural language chat.
+### How it Works
+
+```
+1. Drop a CSV/Excel/JSON file onto the upload zone
+2. Seven agents activate automatically via LangGraph
+3. Watch the real-time agent feed on the right panel
+4. Explore results across 5 dashboard tabs
+5. Ask questions in plain English via the chat panel
+```
+
+### Agent Pipeline (live output)
+
+```
+⚡ IngestAgent    → "Loaded 891 rows, 12 columns. Parsed 'date' as datetime.
+                     Filled 177 missing values in 'Age' with median (28.0)"
+
+⚡ EDAAgent       → "Computed stats for 7 numeric columns.
+                     Generated 9 interactive charts. Strong correlation:
+                     Fare ↔ Survived (0.26)"
+
+⚡ MLAgent        → "Task: Classification | Target: Survived
+                     Best model: XGBoost (accuracy: 0.821)
+                     SHAP: Sex, Pclass, Age are top predictors"
+
+⚡ ForecastAgent  → "Detected datetime column: date
+                     30-day Prophet forecast generated.
+                     Trend: upward (+12.3%)"
+
+⚡ AnomalyAgent   → "Isolation Forest detected 44 anomalies (4.9%)
+                     Risk Assessment: MEDIUM — fare outliers detected"
+```
+
+### NL→SQL Chat
+
+```
+You:   "What is the average fare by passenger class?"
+SQL:   SELECT Pclass, AVG(Fare) as avg_fare FROM data GROUP BY Pclass
+Chart: Auto-generated bar chart ✓
+
+You:   "Show me survival rate by gender"
+SQL:   SELECT Sex, AVG(Survived) as survival_rate FROM data GROUP BY Sex
+Chart: Auto-generated bar chart ✓
+```
+
+### Suggested Datasets to Try
+
+| Dataset | What you'll see |
+|---------|----------------|
+| [Titanic](https://www.kaggle.com/datasets/titanicpassengers) | Classification, SHAP, survival patterns |
+| [Sales data](https://www.kaggle.com/datasets/retail-sales) | Forecasting, revenue trends, anomalies |
+| [Iris](https://archive.ics.uci.edu/ml/datasets/iris) | Multi-class classification, EDA |
+| Any CSV you have | Full autonomous analysis |
+
+> **Note:** Add screenshots/GIFs here after recording a demo session.
 
 ---
 
